@@ -1,155 +1,231 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Chessboard } from "react-chessboard";
-import { Chess } from "chess.js";
+import { useChessGame } from "./hooks/useChessGame";
+import { getDepthForDifficulty } from "./engine/aiPlayer";
 import "./App.css";
 
+const PROMO_PIECES = [
+  { piece: "q", label: "♕ Ферзь" },
+  { piece: "r", label: "♖ Ладья" },
+  { piece: "b", label: "♗ Слон" },
+  { piece: "n", label: "♘ Конь" },
+];
+
 export default function App() {
-  const [game, setGame] = useState(new Chess());
-  const [fen, setFen] = useState("start");
-  const [status, setStatus] = useState("Ваш ход (белые)");
-  const [history, setHistory] = useState([]);
   const [theme, setTheme] = useState("dark");
   const [difficulty, setDifficulty] = useState("Medium");
-  const [gameOver, setGameOver] = useState(false);
-  const [thinking, setThinking] = useState(false);
-  const [coachMessage, setCoachMessage] = useState("");
-  const [loadingCoach, setLoadingCoach] = useState(false);
-  const thinkingRef = useRef(false);
-
-  const updateStatus = useCallback((g) => {
-    if (g.isCheckmate()) {
-      setStatus(g.turn() === "w" ? "Чёрные победили! Мат!" : "Вы победили! Мат!");
-      setGameOver(true);
-    } else if (g.isDraw()) {
-      setStatus("Ничья!");
-      setGameOver(true);
-    } else if (g.isCheck()) {
-      setStatus(g.turn() === "w" ? "Шах! Ваш ход" : "Шах! Ход ИИ");
-    } else {
-      setStatus(g.turn() === "w" ? "Ваш ход (белые)" : "ИИ думает...");
-    }
-  }, []);
-
-  const makeAIMove = useCallback((g) => {
-    if (g.isGameOver()) return;
-    thinkingRef.current = true;
-    setThinking(true);
-    setTimeout(() => {
-      const moves = g.moves();
-      if (moves.length === 0) { thinkingRef.current = false; setThinking(false); return; }
-      const randomMove = moves[Math.floor(Math.random() * moves.length)];
-      const newGame = new Chess(g.fen());
-      newGame.move(randomMove);
-      setGame(newGame);
-      setFen(newGame.fen());
-      setHistory(newGame.history({ verbose: true }));
-      updateStatus(newGame);
-      thinkingRef.current = false;
-      setThinking(false);
-    }, 500);
-  }, [updateStatus]);
-
-  function onDrop(sourceSquare, targetSquare) {
-    if (gameOver || thinkingRef.current) return false;
-    if (game.turn() !== "w") return false;
-    const newGame = new Chess(game.fen());
-    const move = newGame.move({ from: sourceSquare, to: targetSquare, promotion: "q" });
-    if (!move) return false;
-    setGame(newGame);
-    setFen(newGame.fen());
-    setHistory(newGame.history({ verbose: true }));
-    updateStatus(newGame);
-    if (!newGame.isGameOver()) {
-      setTimeout(() => makeAIMove(newGame), 300);
-    }
-    return true;
-  }
-
-  function resetGame() {
-    const newGame = new Chess();
-    setGame(newGame);
-    setFen("start");
-    setHistory([]);
-    setStatus("Ваш ход (белые)");
-    setGameOver(false);
-    setCoachMessage("");
-    thinkingRef.current = false;
-    setThinking(false);
-  }
-
-  async function getCoachAnalysis() {
-    if (history.length < 2) { setCoachMessage("Сыграйте несколько ходов!"); return; }
-    setLoadingCoach(true);
-    setCoachMessage("");
-    const moves = history.map((m, i) => `${i + 1}. ${m.san}`).join(" ");
-    try {
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1000,
-          messages: [{ role: "user", content: `Ты шахматный тренер. Проанализируй эту партию и дай короткий совет на русском языке (3-4 предложения). Укажи одну главную ошибку и один хороший ход. Ходы: ${moves}` }],
-        }),
-      });
-      const data = await response.json();
-      setCoachMessage(data.content[0].text);
-    } catch { setCoachMessage("Ошибка при получении анализа."); }
-    setLoadingCoach(false);
-  }
-
+  const [boardWidth, setBoardWidth] = useState(420);
   const isDark = theme === "dark";
 
+  const {
+    fen,
+    status,
+    history,
+    gameOver,
+    thinking,
+    savedGames,
+    pendingPromotion,
+    onDrop,
+    resetGame,
+    completePromotion,
+    cancelPromotion,
+  } = useChessGame(difficulty);
+
+  useEffect(() => {
+    const update = () => setBoardWidth(Math.min(420, window.innerWidth - 40));
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+
+  const boardOptions = useMemo(
+    () => ({
+      position: fen,
+      onPieceDrop: onDrop,
+      boardStyle: { width: boardWidth, maxWidth: "100%" },
+      darkSquareStyle: { backgroundColor: isDark ? "#4a4a8a" : "#769656" },
+      lightSquareStyle: { backgroundColor: isDark ? "#9090c0" : "#eeeed2" },
+    }),
+    [fen, isDark, onDrop, boardWidth]
+  );
+
+  const panel = { background: isDark ? "#1e1e2e" : "#fff", borderRadius: 12, padding: 16 };
+  const depth = getDepthForDifficulty(difficulty);
+
   return (
-    <div style={{ minHeight: "100vh", background: isDark ? "#0f0f1a" : "#f0f0f0", color: isDark ? "#fff" : "#111", fontFamily: "'Segoe UI', sans-serif", display: "flex", flexDirection: "column", alignItems: "center", padding: "20px" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 24 }}>
-        <span style={{ fontSize: 36 }}>♟</span>
-        <h1 style={{ fontSize: 28, fontWeight: 700, margin: 0 }}>ChessMaster AI</h1>
-        <button onClick={() => setTheme(isDark ? "light" : "dark")} style={{ background: isDark ? "#2a2a3d" : "#ddd", border: "none", borderRadius: 8, padding: "6px 14px", color: isDark ? "#fff" : "#111", cursor: "pointer", fontSize: 18 }}>
+    <div
+      style={{
+        minHeight: "100vh",
+        background: isDark ? "#0f0f1a" : "#f0f0f0",
+        color: isDark ? "#fff" : "#111",
+        fontFamily: "'Segoe UI', sans-serif",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        padding: 16,
+        boxSizing: "border-box",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 20, flexWrap: "wrap", justifyContent: "center" }}>
+        <span style={{ fontSize: 32 }}>♟</span>
+        <h1 style={{ fontSize: 24, fontWeight: 700, margin: 0 }}>ChessMaster AI</h1>
+        <button
+          type="button"
+          onClick={() => setTheme(isDark ? "light" : "dark")}
+          style={{
+            background: isDark ? "#2a2a3d" : "#ddd",
+            border: "none",
+            borderRadius: 8,
+            padding: "6px 14px",
+            color: isDark ? "#fff" : "#111",
+            cursor: "pointer",
+            fontSize: 18,
+          }}
+        >
           {isDark ? "☀️" : "🌙"}
         </button>
       </div>
 
-      <div style={{ display: "flex", gap: 24, flexWrap: "wrap", justifyContent: "center" }}>
-        <div>
-          <Chessboard position={fen} onPieceDrop={onDrop} boardWidth={420} customDarkSquareStyle={{ backgroundColor: isDark ? "#4a4a8a" : "#769656" }} customLightSquareStyle={{ backgroundColor: isDark ? "#9090c0" : "#eeeed2" }} />
-          <div style={{ marginTop: 12, padding: "10px 16px", background: isDark ? "#1e1e2e" : "#fff", borderRadius: 10, textAlign: "center", fontWeight: 600, fontSize: 16, border: `2px solid ${gameOver ? "#f59e0b" : isDark ? "#3a3a5c" : "#ccc"}` }}>
-            {thinking ? "⏳ ИИ думает..." : status}
+      <div style={{ display: "flex", gap: 20, flexWrap: "wrap", justifyContent: "center", width: "100%", maxWidth: 900 }}>
+        <div style={{ position: "relative" }}>
+          <Chessboard options={boardOptions} />
+          {pendingPromotion && (
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                background: "rgba(0,0,0,0.75)",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                borderRadius: 8,
+                gap: 10,
+                zIndex: 10,
+              }}
+            >
+              <div style={{ fontWeight: 700 }}>Выберите фигуру</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
+                {PROMO_PIECES.map(({ piece, label }) => (
+                  <button
+                    key={piece}
+                    type="button"
+                    onClick={() => completePromotion(piece)}
+                    style={{
+                      padding: "10px 14px",
+                      borderRadius: 8,
+                      border: "none",
+                      background: "#6c63ff",
+                      color: "#fff",
+                      cursor: "pointer",
+                      fontWeight: 600,
+                      fontSize: 13,
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <button type="button" onClick={cancelPromotion} style={{ background: "transparent", border: "none", color: "#aaa", cursor: "pointer", fontSize: 12 }}>
+                Отмена
+              </button>
+            </div>
+          )}
+          <div
+            style={{
+              marginTop: 12,
+              padding: "10px 16px",
+              background: isDark ? "#1e1e2e" : "#fff",
+              borderRadius: 10,
+              textAlign: "center",
+              fontWeight: 600,
+              fontSize: 15,
+              border: `2px solid ${gameOver ? "#f59e0b" : isDark ? "#3a3a5c" : "#ccc"}`,
+            }}
+          >
+            {thinking ? "⏳ Компьютер думает..." : status}
           </div>
         </div>
 
-        <div style={{ width: 260, display: "flex", flexDirection: "column", gap: 16 }}>
-          <div style={{ background: isDark ? "#1e1e2e" : "#fff", borderRadius: 12, padding: 16 }}>
-            <div style={{ fontWeight: 600, marginBottom: 10 }}>🎯 Сложность</div>
+        <div style={{ width: "100%", maxWidth: 280, display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={panel}>
+            <div style={{ fontWeight: 600, marginBottom: 10 }}>🎯 Сложность (Stockfish)</div>
             <div style={{ display: "flex", gap: 8 }}>
               {["Easy", "Medium", "Hard"].map((d) => (
-                <button key={d} onClick={() => setDifficulty(d)} style={{ flex: 1, padding: "6px 0", borderRadius: 8, border: "none", background: difficulty === d ? "#6c63ff" : isDark ? "#2a2a3d" : "#eee", color: difficulty === d ? "#fff" : isDark ? "#aaa" : "#555", cursor: "pointer", fontWeight: 600, fontSize: 13 }}>
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => setDifficulty(d)}
+                  style={{
+                    flex: 1,
+                    padding: "6px 0",
+                    borderRadius: 8,
+                    border: "none",
+                    background: difficulty === d ? "#6c63ff" : isDark ? "#2a2a3d" : "#eee",
+                    color: difficulty === d ? "#fff" : isDark ? "#aaa" : "#555",
+                    cursor: "pointer",
+                    fontWeight: 600,
+                    fontSize: 12,
+                  }}
+                >
                   {d === "Easy" ? "Лёгкий" : d === "Medium" ? "Средний" : "Сложный"}
                 </button>
               ))}
             </div>
+            <div style={{ fontSize: 11, color: "#888", marginTop: 8 }}>Глубина анализа: {depth}</div>
           </div>
 
-          <button onClick={resetGame} style={{ padding: "12px", borderRadius: 10, border: "none", background: "#6c63ff", color: "#fff", fontWeight: 700, fontSize: 15, cursor: "pointer" }}>
+          <button
+            type="button"
+            onClick={resetGame}
+            style={{ padding: 12, borderRadius: 10, border: "none", background: "#6c63ff", color: "#fff", fontWeight: 700, fontSize: 15, cursor: "pointer" }}
+          >
             🔄 Новая игра
           </button>
 
-          <div style={{ background: isDark ? "#1e1e2e" : "#fff", borderRadius: 12, padding: 16 }}>
-            <div style={{ fontWeight: 600, marginBottom: 10 }}>🧠 AI Тренер</div>
-            <button onClick={getCoachAnalysis} disabled={loadingCoach} style={{ width: "100%", padding: "10px", borderRadius: 8, border: "none", background: loadingCoach ? "#555" : "#10b981", color: "#fff", fontWeight: 700, cursor: loadingCoach ? "not-allowed" : "pointer", fontSize: 14 }}>
-              {loadingCoach ? "Анализирую..." : "Анализировать партию"}
-            </button>
-            {coachMessage && <div style={{ marginTop: 12, padding: 12, background: isDark ? "#0f2d1f" : "#ecfdf5", borderRadius: 8, fontSize: 13, lineHeight: 1.6, color: isDark ? "#6ee7b7" : "#065f46" }}>{coachMessage}</div>}
-          </div>
-
-          <div style={{ background: isDark ? "#1e1e2e" : "#fff", borderRadius: 12, padding: 16, maxHeight: 200, overflowY: "auto" }}>
-            <div style={{ fontWeight: 600, marginBottom: 10 }}>📜 История ходов</div>
-            {history.length === 0 ? <div style={{ color: "#888", fontSize: 13 }}>Ходов пока нет</div> : (
-              <div style={{ fontSize: 13, lineHeight: 2 }}>
+          <div style={panel}>
+            <div style={{ fontWeight: 600, marginBottom: 10 }}>📜 Ходы партии</div>
+            {history.length === 0 ? (
+              <div style={{ color: "#888", fontSize: 13 }}>Ходов пока нет</div>
+            ) : (
+              <div style={{ fontSize: 13, lineHeight: 2, maxHeight: 140, overflowY: "auto" }}>
                 {history.reduce((acc, move, i) => {
-                  if (i % 2 === 0) acc.push(<div key={i} style={{ display: "flex", gap: 8 }}><span style={{ color: "#888", minWidth: 24 }}>{Math.floor(i / 2) + 1}.</span><span>{move.san}</span>{history[i + 1] && <span style={{ color: "#aaa" }}>{history[i + 1].san}</span>}</div>);
+                  if (i % 2 === 0) {
+                    acc.push(
+                      <div key={i} style={{ display: "flex", gap: 8 }}>
+                        <span style={{ color: "#888", minWidth: 24 }}>{Math.floor(i / 2) + 1}.</span>
+                        <span>{move.san}</span>
+                        {history[i + 1] && <span style={{ color: "#aaa" }}>{history[i + 1].san}</span>}
+                      </div>
+                    );
+                  }
                   return acc;
                 }, [])}
+              </div>
+            )}
+          </div>
+
+          <div style={panel}>
+            <div style={{ fontWeight: 600, marginBottom: 10 }}>💾 История игр</div>
+            {savedGames.length === 0 ? (
+              <div style={{ color: "#888", fontSize: 13 }}>Завершите партию — она сохранится</div>
+            ) : (
+              <div style={{ fontSize: 12, maxHeight: 160, overflowY: "auto" }}>
+                {savedGames.slice(0, 10).map((g) => (
+                  <div key={g.id} style={{ padding: "6px 0", borderBottom: `1px solid ${isDark ? "#333" : "#eee"}` }}>
+                    <div style={{ color: "#888" }}>{new Date(g.date).toLocaleString("ru-RU")}</div>
+                    <div>
+                      {g.result === "white"
+                        ? "Победа белых"
+                        : g.result === "black"
+                          ? "Победа чёрных"
+                          : g.result === "draw"
+                            ? "Ничья"
+                            : "—"}{" "}
+                      · {g.moves} ходов
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>

@@ -16,6 +16,8 @@
     "web-vitals": "^2.1.4"
   },
   "scripts": {
+    "postinstall": "node scripts/copy-stockfish.js",
+    "prebuild": "node scripts/copy-stockfish.js",
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
