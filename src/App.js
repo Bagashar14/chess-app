@@ -24,7 +24,7 @@ export default function App() {
 
   // Init Stockfish
   useEffect(() => {
-    const sf = new Worker("https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js");
+   new Worker('/stockfish.js')
     sf.postMessage("uci");
     sf.postMessage("isready");
     setStockfish(sf);
