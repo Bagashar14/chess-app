@@ -22,37 +22,6 @@ export default function App() {
   const [loadingCoach, setLoadingCoach] = useState(false);
   const [stockfish, setStockfish] = useState(null);
 
-  // Iit Stnockfish
- // Init Stockfish
-useEffect(() => {
-  const sf = new Worker('/stockfish.js');
-  sf.postMessage("uci");
-  sf.postMessage("isready");
-
-  sf.onmessage = (e) => {
-    console.log("Stockfish:", e.data);
-    const msg = e.data;
-    if (msg.startsWith("bestmove")) {
-      const move = msg.split(" ")[1];
-      if (move && move !== "(none)") {
-        setGame(prev => {
-          const newGame = new Chess(prev.fen());
-          newGame.move({ from: move.slice(0, 2), to: move.slice(2, 4), promotion: "q" });
-          setFen(newGame.fen());
-          setHistory(newGame.history({ verbose: true }));
-          updateStatus(newGame);
-          return newGame;
-        });
-      }
-      setThinking(false);
-    }
-  };
-
-  setStockfish(sf);
-  return () => sf.terminate();
-}, [updateStatus]);
-
-
   const updateStatus = useCallback((g) => {
     if (g.isCheckmate()) {
       setStatus(g.turn() === "w" ? "Чёрные победили! Мат!" : "Вы победили! Мат!");
@@ -67,33 +36,41 @@ useEffect(() => {
     }
   }, []);
 
-  const makeStockfishMove = useCallback(
-    (g) => {
-      if (!stockfish || g.isGameOver()) return;
-      setThinking(true);
-      const level = STOCKFISH_LEVELS[difficulty];
-      stockfish.postMessage(`setoption name Skill Level value ${level}`);
-      stockfish.postMessage(`position fen ${g.fen()}`);
-      stockfish.postMessage("go movetime 500");
+  useEffect(() => {
+    const sf = new Worker('/stockfish.js');
+    sf.postMessage("uci");
+    sf.postMessage("isready");
 
-      stockfish.onmessage = (e) => {
-        const msg = e.data;
-        if (msg.startsWith("bestmove")) {
-          const move = msg.split(" ")[1];
-          if (move && move !== "(none)") {
-            const newGame = new Chess(g.fen());
+    sf.onmessage = (e) => {
+      const msg = e.data;
+      if (msg.startsWith("bestmove")) {
+        const move = msg.split(" ")[1];
+        if (move && move !== "(none)") {
+          setGame(prev => {
+            const newGame = new Chess(prev.fen());
             newGame.move({ from: move.slice(0, 2), to: move.slice(2, 4), promotion: "q" });
-            setGame(newGame);
             setFen(newGame.fen());
             setHistory(newGame.history({ verbose: true }));
             updateStatus(newGame);
-          }
-          setThinking(false);
+            return newGame;
+          });
         }
-      };
-    },
-    [stockfish, difficulty, updateStatus]
-  );
+        setThinking(false);
+      }
+    };
+
+    setStockfish(sf);
+    return () => sf.terminate();
+  }, [updateStatus]);
+
+  const makeStockfishMove = useCallback((g) => {
+    if (!stockfish || g.isGameOver()) return;
+    setThinking(true);
+    const level = STOCKFISH_LEVELS[difficulty];
+    stockfish.postMessage(`setoption name Skill Level value ${level}`);
+    stockfish.postMessage(`position fen ${g.fen()}`);
+    stockfish.postMessage("go movetime 500");
+  }, [stockfish, difficulty]);
 
   function onDrop(sourceSquare, targetSquare) {
     if (gameOver || thinking || game.turn() !== "w") return false;
@@ -170,7 +147,6 @@ useEffect(() => {
         padding: "20px",
       }}
     >
-      {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 24 }}>
         <span style={{ fontSize: 36 }}>♟</span>
         <h1 style={{ fontSize: 28, fontWeight: 700, margin: 0 }}>ChessMaster AI</h1>
@@ -191,7 +167,6 @@ useEffect(() => {
       </div>
 
       <div style={{ display: "flex", gap: 24, flexWrap: "wrap", justifyContent: "center" }}>
-        {/* Board */}
         <div>
           <Chessboard
             position={fen}
@@ -200,8 +175,6 @@ useEffect(() => {
             customDarkSquareStyle={{ backgroundColor: isDark ? "#4a4a8a" : "#769656" }}
             customLightSquareStyle={{ backgroundColor: isDark ? "#9090c0" : "#eeeed2" }}
           />
-
-          {/* Status */}
           <div
             style={{
               marginTop: 12,
@@ -218,16 +191,8 @@ useEffect(() => {
           </div>
         </div>
 
-        {/* Sidebar */}
         <div style={{ width: 260, display: "flex", flexDirection: "column", gap: 16 }}>
-          {/* Difficulty */}
-          <div
-            style={{
-              background: isDark ? "#1e1e2e" : "#fff",
-              borderRadius: 12,
-              padding: 16,
-            }}
-          >
+          <div style={{ background: isDark ? "#1e1e2e" : "#fff", borderRadius: 12, padding: 16 }}>
             <div style={{ fontWeight: 600, marginBottom: 10 }}>🎯 Сложность</div>
             <div style={{ display: "flex", gap: 8 }}>
               {["Easy", "Medium", "Hard"].map((d) => (
@@ -252,7 +217,6 @@ useEffect(() => {
             </div>
           </div>
 
-          {/* Controls */}
           <button
             onClick={resetGame}
             style={{
@@ -269,14 +233,7 @@ useEffect(() => {
             🔄 Новая игра
           </button>
 
-          {/* AI Coach */}
-          <div
-            style={{
-              background: isDark ? "#1e1e2e" : "#fff",
-              borderRadius: 12,
-              padding: 16,
-            }}
-          >
+          <div style={{ background: isDark ? "#1e1e2e" : "#fff", borderRadius: 12, padding: 16 }}>
             <div style={{ fontWeight: 600, marginBottom: 10 }}>🧠 AI Тренер</div>
             <button
               onClick={getCoachAnalysis}
@@ -312,7 +269,6 @@ useEffect(() => {
             )}
           </div>
 
-          {/* Move History */}
           <div
             style={{
               background: isDark ? "#1e1e2e" : "#fff",
