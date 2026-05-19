@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Chessboard } from "react-chessboard";
 import { Chess } from "chess.js";
 import "./App.css";
@@ -20,7 +20,7 @@ export default function App() {
   const [thinking, setThinking] = useState(false);
   const [coachMessage, setCoachMessage] = useState("");
   const [loadingCoach, setLoadingCoach] = useState(false);
-  const [stockfish, setStockfish] = useState(null);
+  const stockfishRef = useRef(null);
 
   const updateStatus = useCallback((g) => {
     if (g.isCheckmate()) {
@@ -59,18 +59,18 @@ export default function App() {
       }
     };
 
-    setStockfish(sf);
+    stockfishRef.current = sf;
     return () => sf.terminate();
   }, [updateStatus]);
 
   const makeStockfishMove = useCallback((g) => {
-    if (!stockfish || g.isGameOver()) return;
+    if (!stockfishRef.current || g.isGameOver()) return;
     setThinking(true);
     const level = STOCKFISH_LEVELS[difficulty];
-    stockfish.postMessage(`setoption name Skill Level value ${level}`);
-    stockfish.postMessage(`position fen ${g.fen()}`);
-    stockfish.postMessage("go movetime 500");
-  }, [stockfish, difficulty]);
+    stockfishRef.current.postMessage(`setoption name Skill Level value ${level}`);
+    stockfishRef.current.postMessage(`position fen ${g.fen()}`);
+    stockfishRef.current.postMessage("go movetime 500");
+  }, [difficulty]);
 
   function onDrop(sourceSquare, targetSquare) {
     if (gameOver || thinking || game.turn() !== "w") return false;
