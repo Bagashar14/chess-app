@@ -3,11 +3,7 @@ import { Chessboard } from "react-chessboard";
 import { Chess } from "chess.js";
 import "./App.css";
 
-const STOCKFISH_LEVELS = {
-  Easy: 2,
-  Medium: 8,
-  Hard: 18,
-};
+
 
 export default function App() {
   const [game, setGame] = useState(new Chess());
