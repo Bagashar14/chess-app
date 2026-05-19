@@ -22,7 +22,7 @@ export default function App() {
   const [loadingCoach, setLoadingCoach] = useState(false);
   const [stockfish, setStockfish] = useState(null);
 
-  
+  // Iit Stnockfish
  // Init Stockfish
 useEffect(() => {
   const sf = new Worker('/stockfish.js');
@@ -30,6 +30,7 @@ useEffect(() => {
   sf.postMessage("isready");
 
   sf.onmessage = (e) => {
+    console.log("Stockfish:", e.data);
     const msg = e.data;
     if (msg.startsWith("bestmove")) {
       const move = msg.split(" ")[1];
@@ -49,7 +50,8 @@ useEffect(() => {
 
   setStockfish(sf);
   return () => sf.terminate();
-}, []);
+}, [updateStatus]);
+
 
   const updateStatus = useCallback((g) => {
     if (g.isCheckmate()) {
