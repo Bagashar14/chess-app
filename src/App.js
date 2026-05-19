@@ -22,13 +22,33 @@ export default function App() {
   const [loadingCoach, setLoadingCoach] = useState(false);
   const [stockfish, setStockfish] = useState(null);
 
-  // Init Stockfish
- useEffect(() => {
-    const sf = new Worker('/stockfish.js');
-    sf.postMessage("uci");
-    sf.postMessage("isready");
-    setStockfish(sf);
-    return () => sf.terminate();
+  
+ // Init Stockfish
+useEffect(() => {
+  const sf = new Worker('/stockfish.js');
+  sf.postMessage("uci");
+  sf.postMessage("isready");
+
+  sf.onmessage = (e) => {
+    const msg = e.data;
+    if (msg.startsWith("bestmove")) {
+      const move = msg.split(" ")[1];
+      if (move && move !== "(none)") {
+        setGame(prev => {
+          const newGame = new Chess(prev.fen());
+          newGame.move({ from: move.slice(0, 2), to: move.slice(2, 4), promotion: "q" });
+          setFen(newGame.fen());
+          setHistory(newGame.history({ verbose: true }));
+          updateStatus(newGame);
+          return newGame;
+        });
+      }
+      setThinking(false);
+    }
+  };
+
+  setStockfish(sf);
+  return () => sf.terminate();
 }, []);
 
   const updateStatus = useCallback((g) => {
