@@ -64,13 +64,23 @@ export default function App() {
   }, [updateStatus]);
 
   const makeStockfishMove = useCallback((g) => {
-    if (!stockfishRef.current || g.isGameOver()) return;
-    setThinking(true);
-    const level = STOCKFISH_LEVELS[difficulty];
-    stockfishRef.current.postMessage(`setoption name Skill Level value ${level}`);
-    stockfishRef.current.postMessage(`position fen ${g.fen()}`);
-    stockfishRef.current.postMessage("go movetime 500");
-  }, [difficulty]);
+  if (g.isGameOver()) return;
+  setThinking(true);
+  setTimeout(() => {
+    const moves = g.moves();
+    if (moves.length === 0) return;
+    const randomMove = moves[Math.floor(Math.random() * moves.length)];
+    setGame(prev => {
+      const newGame = new Chess(prev.fen());
+      newGame.move(randomMove);
+      setFen(newGame.fen());
+      setHistory(newGame.history({ verbose: true }));
+      updateStatus(newGame);
+      return newGame;
+    });
+    setThinking(false);
+  }, 500);
+}, [updateStatus]);
 
   function onDrop(sourceSquare, targetSquare) {
     if (gameOver || thinking || game.turn() !== "w") return false;
