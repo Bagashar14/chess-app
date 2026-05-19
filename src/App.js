@@ -23,13 +23,13 @@ export default function App() {
   const [stockfish, setStockfish] = useState(null);
 
   // Init Stockfish
-  useEffect(() => {
-   new Worker('/stockfish.js')
+ useEffect(() => {
+    const sf = new Worker('/stockfish.js');
     sf.postMessage("uci");
     sf.postMessage("isready");
     setStockfish(sf);
     return () => sf.terminate();
-  }, []);
+}, []);
 
   const updateStatus = useCallback((g) => {
     if (g.isCheckmate()) {
